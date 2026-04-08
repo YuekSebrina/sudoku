@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import 'screens/home_screen.dart';
+import 'services/puzzle_cache.dart';
 import 'theme/app_theme.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  PuzzleCache.warmUp();
   runApp(const SudokuApp());
 }
 

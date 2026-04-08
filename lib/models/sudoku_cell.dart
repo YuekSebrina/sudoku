@@ -6,6 +6,11 @@ class SudokuCell {
   Set<int> notes;
   bool isError;
 
+  /// Tracks whether this cell's value doesn't match the solution.
+  /// Unlike [isError] (which tracks visible conflicts), this persists
+  /// through [validateAll] so the user can see their mistake.
+  bool isWrongAnswer;
+
   SudokuCell({
     required this.row,
     required this.col,
@@ -13,6 +18,7 @@ class SudokuCell {
     this.isFixed = false,
     Set<int>? notes,
     this.isError = false,
+    this.isWrongAnswer = false,
   }) : notes = notes ?? {};
 
   bool get isEmpty => value == 0;
@@ -24,6 +30,7 @@ class SudokuCell {
       value = 0;
       notes.clear();
       isError = false;
+      isWrongAnswer = false;
     }
   }
 
@@ -44,6 +51,7 @@ class SudokuCell {
     bool? isFixed,
     Set<int>? notes,
     bool? isError,
+    bool? isWrongAnswer,
   }) {
     return SudokuCell(
       row: row ?? this.row,
@@ -52,6 +60,7 @@ class SudokuCell {
       isFixed: isFixed ?? this.isFixed,
       notes: notes ?? Set.from(this.notes),
       isError: isError ?? this.isError,
+      isWrongAnswer: isWrongAnswer ?? this.isWrongAnswer,
     );
   }
 }

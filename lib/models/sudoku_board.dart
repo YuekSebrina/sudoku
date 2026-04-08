@@ -69,6 +69,7 @@ class SudokuBoard {
       cell.value = 0;
       cell.notes.clear();
       cell.isError = false;
+      cell.isWrongAnswer = false;
     }
   }
 
@@ -125,7 +126,10 @@ class SudokuBoard {
   void validateAll() {
     for (int r = 0; r < 9; r++) {
       for (int c = 0; c < 9; c++) {
-        cells[r][c].isError = cells[r][c].value != 0 && !isCellValid(r, c);
+        final cell = cells[r][c];
+        final hasConflict = cell.value != 0 && !isCellValid(r, c);
+        // isError = visible conflict OR wrong answer vs solution
+        cell.isError = hasConflict || cell.isWrongAnswer;
       }
     }
   }

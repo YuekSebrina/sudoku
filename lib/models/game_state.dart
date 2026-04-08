@@ -43,6 +43,10 @@ class GameState {
         9,
         (r) => List.generate(9, (c) => Set<int>.from(board.getCell(r, c).notes)),
       ),
+      wrongAnswers: List.generate(
+        9,
+        (r) => List.generate(9, (c) => board.getCell(r, c).isWrongAnswer),
+      ),
       row: selectedRow,
       col: selectedCol,
     ));
@@ -67,12 +71,14 @@ class GameState {
 class BoardSnapshot {
   final List<List<int>> values;
   final List<List<Set<int>>> notes;
+  final List<List<bool>> wrongAnswers;
   final int row;
   final int col;
 
   BoardSnapshot({
     required this.values,
     required this.notes,
+    required this.wrongAnswers,
     required this.row,
     required this.col,
   });

@@ -9,11 +9,15 @@ import '../models/drawing.dart';
 import '../models/game_settings.dart';
 import '../models/game_state.dart';
 import '../models/sudoku_board.dart';
+import '../models/technique.dart';
+import '../services/hint_service.dart';
+import '../services/puzzle_cache.dart';
 import '../services/storage_service.dart';
 import '../services/sudoku_generator.dart';
 import '../theme/app_theme.dart';
 import '../widgets/drawing_overlay.dart';
 import '../widgets/drawing_toolbar.dart';
+import '../widgets/interactive_tutorial_board.dart';
 import '../widgets/number_pad.dart';
 import '../widgets/sudoku_board_widget.dart';
 
@@ -42,6 +46,12 @@ class _GameScreenState extends State<GameScreen> {
   Color _drawingColor = const Color(0xFFE53935);
   List<DrawingElement> _drawingElements = [];
 
+  bool _showSmartHint = false;
+  bool _hintStep2 = false;
+  TechniqueResult? _hintResult;
+  List<List<int>>? _hintBoardValues;
+  List<List<Set<int>>>? _hintBoardCandidates;
+
   @override
   void initState() {
     super.initState();
@@ -66,15 +76,27 @@ class _GameScreenState extends State<GameScreen> {
   Future<void> _initGame() async {
     setState(() => _isLoading = true);
 
-    final result = await compute(_generatePuzzle, widget.difficulty);
+    List<List<int>> puzzleValues;
+    List<List<int>> solution;
 
-    _initialPuzzle = result.puzzleValues;
-    _currentSolution = result.solution;
+    // Use cache for hard difficulties, direct compute for easier ones
+    if (widget.difficulty.index >= Difficulty.expert.index) {
+      final cached = await PuzzleCache.getPuzzle(widget.difficulty);
+      puzzleValues = cached.puzzle.toValues();
+      solution = cached.solution;
+    } else {
+      final result = await compute(_generatePuzzle, widget.difficulty);
+      puzzleValues = result.puzzleValues;
+      solution = result.solution;
+    }
+
+    _initialPuzzle = puzzleValues;
+    _currentSolution = solution;
 
     setState(() {
       _gameState = GameState(
-        board: SudokuBoard.fromValues(result.puzzleValues),
-        solution: result.solution,
+        board: SudokuBoard.fromValues(puzzleValues),
+        solution: solution,
         difficulty: widget.difficulty,
       );
       _isPaused = false;
@@ -235,6 +257,7 @@ class _GameScreenState extends State<GameScreen> {
         if (_gameState.solution[row][col] != number) {
           _gameState.mistakes++;
           cell.isError = true;
+          cell.isWrongAnswer = true;
           if (_gameState.mistakes >= GameState.maxMistakes) {
             _gameState.status = GameStatus.completed;
             _timer?.cancel();
@@ -244,6 +267,7 @@ class _GameScreenState extends State<GameScreen> {
           }
         } else {
           cell.isError = false;
+          cell.isWrongAnswer = false;
         }
 
         _gameState.board.validateAll();
@@ -278,8 +302,88 @@ class _GameScreenState extends State<GameScreen> {
     setState(() => _gameState.isNotesMode = !_gameState.isNotesMode);
   }
 
+  /// Fill candidates for hint-involved cells AND their related groups.
+  /// This ensures the next hint detection sees consistent candidate data.
+  void _fillHintCandidates(TechniqueResult result) {
+    final cellsToFill = <CellPosition>{
+      ...result.highlightCells,
+      ...result.relatedCells,
+      ...result.eliminateCandidates.keys,
+      ...result.placements.keys,
+    };
+
+    // Also fill cells in the same row/col/box as any elimination target,
+    // so the next detection has a consistent view.
+    for (final pos in result.eliminateCandidates.keys) {
+      for (int i = 0; i < 9; i++) {
+        cellsToFill.add(CellPosition(pos.row, i));
+        cellsToFill.add(CellPosition(i, pos.col));
+      }
+      final br = (pos.row ~/ 3) * 3, bc = (pos.col ~/ 3) * 3;
+      for (int r = br; r < br + 3; r++) {
+        for (int c = bc; c < bc + 3; c++) {
+          cellsToFill.add(CellPosition(r, c));
+        }
+      }
+    }
+    // Same for placements
+    for (final pos in result.placements.keys) {
+      for (int i = 0; i < 9; i++) {
+        cellsToFill.add(CellPosition(pos.row, i));
+        cellsToFill.add(CellPosition(i, pos.col));
+      }
+      final br = (pos.row ~/ 3) * 3, bc = (pos.col ~/ 3) * 3;
+      for (int r = br; r < br + 3; r++) {
+        for (int c = bc; c < bc + 3; c++) {
+          cellsToFill.add(CellPosition(r, c));
+        }
+      }
+    }
+
+    for (final pos in cellsToFill) {
+      final cell = _gameState.board.getCell(pos.row, pos.col);
+      if (cell.isEmpty && !cell.isFixed && cell.notes.isEmpty) {
+        cell.notes = _gameState.board.getCandidates(pos.row, pos.col);
+      }
+    }
+  }
+
+  /// Build a consistent candidate map for technique detection.
+  /// Always starts from grid-computed candidates, then intersects with
+  /// existing notes to preserve previous eliminations.
+  List<List<Set<int>>> _getHintCandidates() {
+    final grid = _gameState.board.toValues();
+    return List.generate(9, (r) => List.generate(9, (c) {
+      if (grid[r][c] != 0) return <int>{};
+      final computed = _gameState.board.getCandidates(r, c);
+      final cell = _gameState.board.getCell(r, c);
+      if (cell.notes.isNotEmpty) {
+        // Intersect: keep only candidates valid by grid AND not eliminated
+        return computed.intersection(cell.notes);
+      }
+      return computed;
+    }));
+  }
+
   void _onHint() {
     if (_gameState.status != GameStatus.playing || _isPaused) return;
+
+    final grid = _gameState.board.toValues();
+    final candidates = _getHintCandidates();
+    final result = HintService.getHintWithCandidates(grid, candidates);
+
+    if (result != null) {
+      setState(() {
+        _showSmartHint = true;
+        _hintStep2 = false;
+        _hintResult = result;
+        _hintBoardValues = grid;
+        _hintBoardCandidates = candidates;
+      });
+      return;
+    }
+
+    // Fallback: direct answer reveal for the selected cell
     if (!_gameState.hasSelection) return;
     final row = _gameState.selectedRow;
     final col = _gameState.selectedCol;
@@ -306,6 +410,64 @@ class _GameScreenState extends State<GameScreen> {
     _autoSave();
   }
 
+  void _applySmartHint() {
+    if (_hintResult == null) return;
+
+    setState(() {
+      _gameState.saveSnapshot();
+      _gameState.hintsUsed++;
+
+      // Fill candidates only for cells involved in this hint
+      _fillHintCandidates(_hintResult!);
+
+      // Apply placements
+      for (final entry in _hintResult!.placements.entries) {
+        _gameState.board.setValue(
+          entry.key.row, entry.key.col, entry.value,
+          autoRemoveNotes: _settings.autoRemoveNotes,
+        );
+        _gameState.board.getCell(entry.key.row, entry.key.col).isError = false;
+      }
+
+      // Apply candidate eliminations
+      for (final entry in _hintResult!.eliminateCandidates.entries) {
+        final cell = _gameState.board.getCell(entry.key.row, entry.key.col);
+        if (cell.notes.isEmpty && cell.isEmpty) {
+          cell.notes = _gameState.board.getCandidates(entry.key.row, entry.key.col);
+        }
+        cell.notes.removeAll(entry.value);
+      }
+
+      _gameState.board.validateAll();
+
+      _showSmartHint = false;
+      _hintStep2 = false;
+      _hintResult = null;
+      _hintBoardValues = null;
+      _hintBoardCandidates = null;
+
+      if (_gameState.board.isComplete) {
+        _gameState.status = GameStatus.completed;
+        _timer?.cancel();
+        StorageService.clearGame();
+        StorageService.recordWin(
+            _gameState.difficulty.name, _gameState.elapsed);
+        _showWinDialog();
+      }
+    });
+    _autoSave();
+  }
+
+  void _dismissSmartHint() {
+    setState(() {
+      _showSmartHint = false;
+      _hintStep2 = false;
+      _hintResult = null;
+      _hintBoardValues = null;
+      _hintBoardCandidates = null;
+    });
+  }
+
   void _onAutoNotes() {
     if (_gameState.status != GameStatus.playing || _isPaused) return;
     setState(() {
@@ -326,6 +488,7 @@ class _GameScreenState extends State<GameScreen> {
           if (!cell.isFixed) {
             cell.value = snapshot.values[r][c];
             cell.notes = Set<int>.from(snapshot.notes[r][c]);
+            cell.isWrongAnswer = snapshot.wrongAnswers[r][c];
           }
         }
       }
@@ -470,7 +633,7 @@ class _GameScreenState extends State<GameScreen> {
             child: Column(children: [
               _buildStatusBar(),
               const SizedBox(height: 8),
-              if (_drawingMode)
+              if (_drawingMode && !_showSmartHint)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: SingleChildScrollView(
@@ -484,9 +647,15 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                   ),
                 ),
-              Expanded(child: Center(child: _buildBoardArea())),
+              Expanded(child: Center(
+                child: _showSmartHint && _hintResult != null
+                    ? _buildHintBoard()
+                    : _buildBoardArea(),
+              )),
               const SizedBox(height: 8),
-              if (!_isPaused)
+              if (_showSmartHint && _hintResult != null)
+                _buildHintControls()
+              else if (!_isPaused)
                 NumberPad(
                   onNumberTap: _onNumberInput, onDelete: _onDelete, onNotesToggle: _onNotesToggle,
                   onHint: _onHint, onUndo: _onUndo, onAutoNotes: _onAutoNotes,
@@ -498,6 +667,88 @@ class _GameScreenState extends State<GameScreen> {
             ]),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildHintBoard() {
+    return InteractiveTutorialBoard(
+      boardValues: _hintBoardValues!,
+      boardCandidates: _hintBoardCandidates!,
+      techniqueResult: _hintResult!,
+      showEliminations: _hintStep2,
+    );
+  }
+
+  Widget _buildHintControls() {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 500),
+      child: Column(
+        children: [
+          // Technique info
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryColor.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.15)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _hintResult!.type.nameZh,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primaryColor),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _hintResult!.description,
+                    style: const TextStyle(fontSize: 13, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          // Buttons
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _dismissSmartHint,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: const Text('关闭'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton(
+                  onPressed: _hintStep2 ? _applySmartHint : () => setState(() => _hintStep2 = true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  child: Text(_hintStep2 ? '应用此解法' : '下一步'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -55,4 +55,23 @@ class StorageService {
     stats.recordLoss(diffName);
     await saveStats(stats);
   }
+
+  // --- Practice Progress ---
+
+  static const _keyPracticeProgress = 'practice_progress';
+
+  static Future<Map<String, int>> loadPracticeProgress() async {
+    final prefs = await _prefs;
+    final s = prefs.getString(_keyPracticeProgress);
+    if (s == null) return {};
+    final data = jsonDecode(s) as Map<String, dynamic>;
+    return data.map((k, v) => MapEntry(k, v as int));
+  }
+
+  static Future<void> savePracticeProgress(String techniqueId, int completed) async {
+    final progress = await loadPracticeProgress();
+    progress[techniqueId] = completed;
+    final prefs = await _prefs;
+    await prefs.setString(_keyPracticeProgress, jsonEncode(progress));
+  }
 }
