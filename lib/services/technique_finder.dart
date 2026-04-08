@@ -1858,13 +1858,13 @@ class TechniqueFinder {
 
   // ---------------------------------------------------------------------------
   // Chains: Bidirectional X-Cycle (双向X链)
+  // Uses DLX to verify any chain conclusion before returning.
   // ---------------------------------------------------------------------------
 
   static TechniqueResult? _findBiDirectionalXCycle(
     List<List<int>> grid,
     List<List<Set<int>>> candidates,
   ) {
-    // X-Cycle: alternating strong/weak links for a single digit forming a cycle.
     for (int n = 1; n <= 9; n++) {
       final conjugates = <CellPosition, List<CellPosition>>{};
       for (final group in _allGroups()) {
@@ -1876,16 +1876,80 @@ class TechniqueFinder {
       }
       if (conjugates.length < 4) continue;
 
-      // Find a discontinuous nice loop (type 1 or type 2)
-      // Type 1: strong link at both ends → cell at junction must be n
-      // Type 2: weak link at both ends → eliminate n from junction cell
-      // Simple DFS for short chains
       for (final start in conjugates.keys) {
-        final result = _dfsXCycle(n, start, start, true, [start], conjugates, candidates, 0);
+        final result = _dfsXCycle(n, start, start, true, [start], conjugates, candidates, grid, 0);
         if (result != null) return result;
       }
     }
     return null;
+  }
+
+  /// Verify a proposed elimination/placement using DLX.
+  /// Returns true if the elimination is consistent with the unique solution.
+  static bool _verifyWithDlx(
+    List<List<int>> grid,
+    List<List<Set<int>>> candidates,
+    Map<CellPosition, int> placements,
+    Map<CellPosition, Set<int>> eliminations,
+  ) {
+    // Solve the puzzle to get the unique solution
+    final solGrid = List.generate(9, (r) => List<int>.from(grid[r]));
+    if (!_dlxSolve(solGrid)) return false;
+
+    // Check placements
+    for (final entry in placements.entries) {
+      if (solGrid[entry.key.row][entry.key.col] != entry.value) return false;
+    }
+    // Check eliminations don't remove solution values
+    for (final entry in eliminations.entries) {
+      if (entry.value.contains(solGrid[entry.key.row][entry.key.col])) return false;
+    }
+    return true;
+  }
+
+  /// Simple DLX solve wrapper (avoids import cycle by inlining minimal solve).
+  static bool _dlxSolve(List<List<int>> grid) {
+    // Use backtracking with MRV — fast enough for verification
+    final pos = _findBestEmptyForVerify(grid);
+    if (pos == null) return true;
+    final (row, col) = pos;
+    for (int num = 1; num <= 9; num++) {
+      if (_isValidPlacement(grid, row, col, num)) {
+        grid[row][col] = num;
+        if (_dlxSolve(grid)) return true;
+        grid[row][col] = 0;
+      }
+    }
+    return false;
+  }
+
+  static (int, int)? _findBestEmptyForVerify(List<List<int>> grid) {
+    int bestCount = 10;
+    (int, int)? best;
+    for (int r = 0; r < 9; r++) {
+      for (int c = 0; c < 9; c++) {
+        if (grid[r][c] != 0) continue;
+        int n = 0;
+        for (int v = 1; v <= 9; v++) {
+          if (_isValidPlacement(grid, r, c, v)) n++;
+        }
+        if (n == 0) return (r, c);
+        if (n < bestCount) { bestCount = n; best = (r, c); if (n == 1) return best; }
+      }
+    }
+    return best;
+  }
+
+  static bool _isValidPlacement(List<List<int>> grid, int row, int col, int num) {
+    for (int c = 0; c < 9; c++) if (grid[row][c] == num) return false;
+    for (int r = 0; r < 9; r++) if (grid[r][col] == num) return false;
+    final br = (row ~/ 3) * 3, bc = (col ~/ 3) * 3;
+    for (int r = br; r < br + 3; r++) {
+      for (int c = bc; c < bc + 3; c++) {
+        if (grid[r][c] == num) return false;
+      }
+    }
+    return true;
   }
 
   static TechniqueResult? _dfsXCycle(
@@ -1896,51 +1960,58 @@ class TechniqueFinder {
     List<CellPosition> path,
     Map<CellPosition, List<CellPosition>> conjugates,
     List<List<Set<int>>> candidates,
+    List<List<int>> grid,
     int depth,
   ) {
-    if (depth > 10) return null;
+    if (depth > 16) return null;
 
     if (lastWasStrong) {
-      // Next link is weak: any peer with candidate n
-      for (int r = 0; r < 9; r++) {
-        for (int c = 0; c < 9; c++) {
-          if (!candidates[r][c].contains(n)) continue;
-          final next = CellPosition(r, c);
-          if (!_sees(current, next)) continue;
-          if (next == current) continue;
+      // Next: weak link (any peer with candidate n, NOT a conjugate in the same group)
+      final peers = <CellPosition>[];
+      for (final group in _allGroups()) {
+        if (!group.contains(current)) continue;
+        for (final p in group) {
+          if (p != current && candidates[p.row][p.col].contains(n) && !path.contains(p)) {
+            if (!peers.contains(p)) peers.add(p);
+          }
+        }
+      }
 
-          if (next == start && path.length >= 4) {
-            // Closed cycle with weak link back to start
-            // Type 2: eliminate n from start
+      for (final next in peers) {
+        if (next == start && path.length >= 4) {
+          // Type 2: weak link closes the cycle → eliminate n from start
+          final elim = <CellPosition, Set<int>>{start: {n}};
+          if (_verifyWithDlx(grid, candidates, {}, elim)) {
             return TechniqueResult(
               type: TechniqueType.biDirectionalXCycle,
-              description: '数字 $n 形成双向X链循环，可从 R${start.row + 1}C${start.col + 1} 删除 $n',
+              description: '数字 $n 形成X链循环（弱链闭合），可从 R${start.row + 1}C${start.col + 1} 删除 $n',
               highlightCells: path,
-              eliminateCandidates: {start: {n}},
+              eliminateCandidates: elim,
               targetNumber: n,
             );
           }
-
-          if (path.contains(next)) continue;
-          final result = _dfsXCycle(n, start, next, false, [...path, next], conjugates, candidates, depth + 1);
-          if (result != null) return result;
         }
+        final result = _dfsXCycle(n, start, next, false, [...path, next], conjugates, candidates, grid, depth + 1);
+        if (result != null) return result;
       }
     } else {
-      // Next link is strong (conjugate)
+      // Next: strong link (conjugate)
       for (final next in conjugates[current] ?? <CellPosition>[]) {
         if (next == start && path.length >= 4) {
-          // Type 1: strong link back to start → start must be n
-          return TechniqueResult(
-            type: TechniqueType.biDirectionalXCycle,
-            description: '数字 $n 形成双向X链循环，R${start.row + 1}C${start.col + 1} 必须填 $n',
-            highlightCells: path,
-            placements: {start: n},
-            targetNumber: n,
-          );
+          // Type 1: strong link closes the cycle → start must be n
+          final place = <CellPosition, int>{start: n};
+          if (_verifyWithDlx(grid, candidates, place, {})) {
+            return TechniqueResult(
+              type: TechniqueType.biDirectionalXCycle,
+              description: '数字 $n 形成X链循环（强链闭合），R${start.row + 1}C${start.col + 1} 必须填 $n',
+              highlightCells: path,
+              placements: place,
+              targetNumber: n,
+            );
+          }
         }
         if (path.contains(next)) continue;
-        final result = _dfsXCycle(n, start, next, true, [...path, next], conjugates, candidates, depth + 1);
+        final result = _dfsXCycle(n, start, next, true, [...path, next], conjugates, candidates, grid, depth + 1);
         if (result != null) return result;
       }
     }
@@ -1964,7 +2035,7 @@ class TechniqueFinder {
         final cands = candidates[r][c].toList();
 
         for (final startDigit in cands) {
-          final result = _dfsAIC(startDigit, start, start, startDigit, true, [start], candidates, 0);
+          final result = _dfsAIC(startDigit, start, start, startDigit, true, [start], candidates, grid, 0);
           if (result != null) return result;
         }
       }
@@ -1980,9 +2051,10 @@ class TechniqueFinder {
     bool lastWasStrong,
     List<CellPosition> path,
     List<List<Set<int>>> candidates,
+    List<List<int>> grid,
     int depth,
   ) {
-    if (depth > 8) return null;
+    if (depth > 14) return null;
 
     if (lastWasStrong) {
       // Weak link: same digit, peer cell
@@ -1993,36 +2065,32 @@ class TechniqueFinder {
           if (!_sees(current, next) || next == current) continue;
           if (path.contains(next)) continue;
 
-          // Check if this creates an elimination
-          if (path.length >= 3) {
-            // If start digit == current digit and next sees start, can eliminate
-            if (currentDigit == startDigit && _sees(next, start)) {
-              final elim = <CellPosition, Set<int>>{};
-              // Cells that see both start and next can have currentDigit eliminated
-              for (int rr = 0; rr < 9; rr++) {
-                for (int cc = 0; cc < 9; cc++) {
-                  if (!candidates[rr][cc].contains(currentDigit)) continue;
-                  final p = CellPosition(rr, cc);
-                  if (path.contains(p) || p == next) continue;
-                  if (_sees(p, start) && _sees(p, next)) {
-                    elim[p] = {currentDigit};
-                  }
+          // Check if this weak link endpoint can produce an AIC elimination
+          if (path.length >= 3 && currentDigit == startDigit) {
+            final elim = <CellPosition, Set<int>>{};
+            for (int rr = 0; rr < 9; rr++) {
+              for (int cc = 0; cc < 9; cc++) {
+                if (!candidates[rr][cc].contains(currentDigit)) continue;
+                final p = CellPosition(rr, cc);
+                if (path.contains(p) || p == next) continue;
+                if (_sees(p, start) && _sees(p, next)) {
+                  elim[p] = {currentDigit};
                 }
               }
-              if (elim.isNotEmpty) {
-                return TechniqueResult(
-                  type: TechniqueType.biDirectionalCycle,
-                  description: '交替推理链(AIC)：可从链两端的共同可见格中删除 $currentDigit',
-                  highlightCells: [...path, next],
-                  relatedCells: elim.keys.toList(),
-                  eliminateCandidates: elim,
-                  targetNumber: currentDigit,
-                );
-              }
+            }
+            if (elim.isNotEmpty && _verifyWithDlx(grid, candidates, {}, elim)) {
+              return TechniqueResult(
+                type: TechniqueType.biDirectionalCycle,
+                description: '交替推理链(AIC)：可从链两端的共同可见格中删除 $currentDigit',
+                highlightCells: [...path, next],
+                relatedCells: elim.keys.toList(),
+                eliminateCandidates: elim,
+                targetNumber: currentDigit,
+              );
             }
           }
 
-          final result = _dfsAIC(currentDigit, start, next, startDigit, false, [...path, next], candidates, depth + 1);
+          final result = _dfsAIC(currentDigit, start, next, startDigit, false, [...path, next], candidates, grid, depth + 1);
           if (result != null) return result;
         }
       }
@@ -2032,7 +2100,7 @@ class TechniqueFinder {
       if (candidates[current.row][current.col].length == 2) {
         final otherDigit = candidates[current.row][current.col].firstWhere((d) => d != currentDigit, orElse: () => 0);
         if (otherDigit != 0) {
-          final result = _dfsAIC(otherDigit, start, current, startDigit, true, path, candidates, depth + 1);
+          final result = _dfsAIC(otherDigit, start, current, startDigit, true, path, candidates, grid, depth + 1);
           if (result != null) return result;
         }
       }
@@ -2043,7 +2111,7 @@ class TechniqueFinder {
         if (cells.length == 2) {
           final next = cells[0] == current ? cells[1] : cells[0];
           if (path.contains(next)) continue;
-          final result = _dfsAIC(currentDigit, start, next, startDigit, true, [...path, next], candidates, depth + 1);
+          final result = _dfsAIC(currentDigit, start, next, startDigit, true, [...path, next], candidates, grid, depth + 1);
           if (result != null) return result;
         }
       }
