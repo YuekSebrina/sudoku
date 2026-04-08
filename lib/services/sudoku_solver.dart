@@ -3,10 +3,10 @@ import 'dart:math';
 class SudokuSolver {
   /// Solves the puzzle in-place. Returns true if a solution exists.
   static bool solve(List<List<int>> grid) {
-    final empty = _findEmpty(grid);
-    if (empty == null) return true;
+    final pos = _findBestEmpty(grid);
+    if (pos == null) return true;
 
-    final (row, col) = empty;
+    final (row, col) = pos;
     for (int num = 1; num <= 9; num++) {
       if (_isValid(grid, row, col, num)) {
         grid[row][col] = num;
@@ -19,10 +19,10 @@ class SudokuSolver {
 
   /// Solves with randomized candidate order (for generation).
   static bool solveRandom(List<List<int>> grid, Random random) {
-    final empty = _findEmpty(grid);
-    if (empty == null) return true;
+    final pos = _findBestEmpty(grid);
+    if (pos == null) return true;
 
-    final (row, col) = empty;
+    final (row, col) = pos;
     final nums = List.generate(9, (i) => i + 1)..shuffle(random);
     for (int num in nums) {
       if (_isValid(grid, row, col, num)) {
@@ -36,20 +36,20 @@ class SudokuSolver {
 
   /// Counts solutions up to [limit]. Used to verify unique solution.
   static int countSolutions(List<List<int>> grid, {int limit = 2}) {
-    return _countSolutionsHelper(grid, 0, limit);
+    return _countHelper(grid, 0, limit);
   }
 
-  static int _countSolutionsHelper(List<List<int>> grid, int count, int limit) {
+  static int _countHelper(List<List<int>> grid, int count, int limit) {
     if (count >= limit) return count;
 
-    final empty = _findEmpty(grid);
-    if (empty == null) return count + 1;
+    final pos = _findBestEmpty(grid);
+    if (pos == null) return count + 1;
 
-    final (row, col) = empty;
+    final (row, col) = pos;
     for (int num = 1; num <= 9; num++) {
       if (_isValid(grid, row, col, num)) {
         grid[row][col] = num;
-        count = _countSolutionsHelper(grid, count, limit);
+        count = _countHelper(grid, count, limit);
         grid[row][col] = 0;
         if (count >= limit) return count;
       }
@@ -57,13 +57,28 @@ class SudokuSolver {
     return count;
   }
 
-  static (int, int)? _findEmpty(List<List<int>> grid) {
+  /// MRV heuristic: pick the empty cell with fewest valid candidates.
+  /// Dramatically reduces backtracking on sparse grids.
+  static (int, int)? _findBestEmpty(List<List<int>> grid) {
+    int bestCount = 10;
+    (int, int)? best;
+
     for (int r = 0; r < 9; r++) {
       for (int c = 0; c < 9; c++) {
-        if (grid[r][c] == 0) return (r, c);
+        if (grid[r][c] != 0) continue;
+        int n = 0;
+        for (int v = 1; v <= 9; v++) {
+          if (_isValid(grid, r, c, v)) n++;
+        }
+        if (n == 0) return (r, c); // dead end, fail fast
+        if (n < bestCount) {
+          bestCount = n;
+          best = (r, c);
+          if (n == 1) return best; // only one choice, pick immediately
+        }
       }
     }
-    return null;
+    return best;
   }
 
   static bool _isValid(List<List<int>> grid, int row, int col, int num) {

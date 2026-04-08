@@ -11,6 +11,7 @@ class NumberPad extends StatelessWidget {
   final VoidCallback? onAutoNotes;
   final bool isNotesMode;
   final Map<int, int> remainingCounts;
+  final Set<int> activeNotes;
 
   const NumberPad({
     super.key,
@@ -22,6 +23,7 @@ class NumberPad extends StatelessWidget {
     this.onAutoNotes,
     required this.isNotesMode,
     this.remainingCounts = const {},
+    this.activeNotes = const {},
   });
 
   @override
@@ -78,9 +80,13 @@ class NumberPad extends StatelessWidget {
       children: List.generate(9, (index) {
         final number = index + 1;
         final remaining = remainingCounts[number] ?? 9;
+        final isNoteActive = isNotesMode && activeNotes.contains(number);
+        final isNoteDimmed = isNotesMode && !activeNotes.contains(number);
         return _NumberButton(
           number: number,
           remaining: remaining,
+          isNoteActive: isNoteActive,
+          isNoteDimmed: isNoteDimmed,
           onTap: () => onNumberTap(number),
         );
       }),
@@ -151,11 +157,15 @@ class _ToolButton extends StatelessWidget {
 class _NumberButton extends StatelessWidget {
   final int number;
   final int remaining;
+  final bool isNoteActive;
+  final bool isNoteDimmed;
   final VoidCallback onTap;
 
   const _NumberButton({
     required this.number,
     required this.remaining,
+    this.isNoteActive = false,
+    this.isNoteDimmed = false,
     required this.onTap,
   });
 
@@ -163,6 +173,30 @@ class _NumberButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    Color bgColor;
+    Color numColor;
+    Color borderColor;
+    double borderWidth = 1;
+
+    if (_isCompleted) {
+      bgColor = Colors.grey.shade100;
+      numColor = Colors.grey.shade300;
+      borderColor = Colors.grey.shade200;
+    } else if (isNoteActive) {
+      bgColor = AppTheme.primaryColor.withValues(alpha: 0.12);
+      numColor = AppTheme.primaryColor;
+      borderColor = AppTheme.primaryColor;
+      borderWidth = 1.5;
+    } else if (isNoteDimmed) {
+      bgColor = Colors.grey.shade50;
+      numColor = Colors.grey.shade300;
+      borderColor = Colors.grey.shade200;
+    } else {
+      bgColor = Colors.white;
+      numColor = AppTheme.primaryColor;
+      borderColor = Colors.grey.shade300;
+    }
+
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -174,12 +208,9 @@ class _NumberButton extends StatelessWidget {
             child: Container(
               height: 56,
               decoration: BoxDecoration(
-                color: _isCompleted ? Colors.grey.shade100 : Colors.white,
+                color: bgColor,
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: _isCompleted ? Colors.grey.shade200 : Colors.grey.shade300,
-                  width: 1,
-                ),
+                border: Border.all(color: borderColor, width: borderWidth),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -189,9 +220,7 @@ class _NumberButton extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.w700,
-                      color: _isCompleted
-                          ? Colors.grey.shade300
-                          : AppTheme.primaryColor,
+                      color: numColor,
                       height: 1.1,
                     ),
                   ),
@@ -200,7 +229,7 @@ class _NumberButton extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w500,
-                      color: _isCompleted
+                      color: _isCompleted || isNoteDimmed
                           ? Colors.grey.shade300
                           : Colors.grey.shade400,
                       height: 1.2,
