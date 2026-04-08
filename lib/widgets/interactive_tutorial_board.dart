@@ -110,17 +110,23 @@ class InteractiveTutorialBoard extends StatelessWidget {
                         ),
                       ),
                     ),
-                  // Lines/arrows overlay
-                  if (techniqueResult != null && techniqueResult!.lines.isNotEmpty)
-                    IgnorePointer(
-                      child: CustomPaint(
-                        size: Size(constraints.maxWidth, constraints.maxHeight),
-                        painter: _LinePainter(
-                          lines: techniqueResult!.lines,
-                          cellSize: cellSize,
+                  // Lines/arrows overlay (use explicit lines or auto-generated ones)
+                  if (techniqueResult != null)
+                    Builder(builder: (context) {
+                      final effectiveLines = techniqueResult!.lines.isNotEmpty
+                          ? techniqueResult!.lines
+                          : _computeAutoLines(techniqueResult!);
+                      if (effectiveLines.isEmpty) return const SizedBox.shrink();
+                      return IgnorePointer(
+                        child: CustomPaint(
+                          size: Size(constraints.maxWidth, constraints.maxHeight),
+                          painter: _LinePainter(
+                            lines: effectiveLines,
+                            cellSize: cellSize,
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    }),
                 ],
               );
             },
@@ -128,6 +134,36 @@ class InteractiveTutorialBoard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Auto-generate arrows from highlight cells to elimination targets
+  /// for techniques that don't have explicit lines.
+  static List<HighlightLine> _computeAutoLines(TechniqueResult result) {
+    if (result.eliminateCandidates.isEmpty || result.highlightCells.isEmpty) {
+      return const [];
+    }
+
+    final lines = <HighlightLine>[];
+    final digit = result.targetNumber;
+
+    for (final elimCell in result.eliminateCandidates.keys) {
+      CellPosition? closest;
+      int minDist = 999;
+      for (final hCell in result.highlightCells) {
+        final dist =
+            (hCell.row - elimCell.row).abs() + (hCell.col - elimCell.col).abs();
+        if (dist < minDist) {
+          minDist = dist;
+          closest = hCell;
+        }
+      }
+      if (closest != null) {
+        lines.add(HighlightLine(closest, elimCell,
+            style: HighlightLineStyle.arrow, digit: digit));
+      }
+    }
+
+    return lines;
   }
 
   _CellHighlightType _getCellHighlight(int row, int col) {

@@ -26,6 +26,7 @@ class _TutorialDetailScreenState extends State<TutorialDetailScreen> {
   int _totalCompleted = 0;
   bool _isLoading = true;
   bool _applied = false;
+  bool _showStep2 = false;
   bool _showDescription = true;
 
   late List<List<int>> _boardValues;
@@ -56,6 +57,7 @@ class _TutorialDetailScreenState extends State<TutorialDetailScreen> {
     setState(() {
       _isLoading = true;
       _applied = false;
+      _showStep2 = false;
     });
 
     TechniqueResult? result;
@@ -181,6 +183,7 @@ class _TutorialDetailScreenState extends State<TutorialDetailScreen> {
   void _resetPuzzle() {
     setState(() {
       _applied = false;
+      _showStep2 = false;
       _boardValues = List.generate(9, (r) => List<int>.from(_originalBoardValues[r]));
       _boardCandidates = List.generate(
         9, (r) => List.generate(9, (c) => Set<int>.from(_originalBoardCandidates[r][c])),
@@ -290,7 +293,7 @@ class _TutorialDetailScreenState extends State<TutorialDetailScreen> {
                               boardValues: _boardValues,
                               boardCandidates: _boardCandidates,
                               techniqueResult: _applied ? null : _techniqueResult,
-                              showEliminations: false,
+                              showEliminations: _showStep2,
                               originalValues: _originalBoardValues,
                             ),
                           ),
@@ -302,19 +305,57 @@ class _TutorialDetailScreenState extends State<TutorialDetailScreen> {
                               width: double.infinity,
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppTheme.primaryColor.withValues(alpha: 0.06),
+                                color: _showStep2
+                                    ? AppTheme.accentColor.withValues(alpha: 0.06)
+                                    : AppTheme.primaryColor.withValues(alpha: 0.06),
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.15)),
+                                border: Border.all(
+                                  color: _showStep2
+                                      ? AppTheme.accentColor.withValues(alpha: 0.2)
+                                      : AppTheme.primaryColor.withValues(alpha: 0.15),
+                                ),
                               ),
-                              child: Row(
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Icon(Icons.lightbulb, size: 18, color: AppTheme.accentColor),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(_techniqueResult!.description,
-                                        style: const TextStyle(fontSize: 14, height: 1.5)),
+                                  Row(
+                                    children: [
+                                      Icon(
+                                        _showStep2 ? Icons.auto_fix_high : Icons.lightbulb,
+                                        size: 18,
+                                        color: _showStep2
+                                            ? AppTheme.accentColor
+                                            : AppTheme.accentColor,
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        _showStep2 ? '第二步：观察变化' : '第一步：分析',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: _showStep2
+                                              ? AppTheme.accentColor
+                                              : AppTheme.primaryColor,
+                                        ),
+                                      ),
+                                    ],
                                   ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _techniqueResult!.description,
+                                    style: const TextStyle(fontSize: 14, height: 1.5),
+                                  ),
+                                  if (_showStep2) ...[
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      _buildStep2Summary(),
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey.shade600,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -361,6 +402,41 @@ class _TutorialDetailScreenState extends State<TutorialDetailScreen> {
   }
 
   Widget _buildApplyButton() {
+    if (_showStep2) {
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.arrow_back, size: 16),
+              label: const Text('上一步', style: TextStyle(fontSize: 13)),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => setState(() => _showStep2 = false),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 2,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('应用此解法'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: _applyStep,
+            ),
+          ),
+        ],
+      );
+    }
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
@@ -370,9 +446,10 @@ class _TutorialDetailScreenState extends State<TutorialDetailScreen> {
           backgroundColor: AppTheme.primaryColor,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10)),
         ),
-        onPressed: _applyStep,
+        onPressed: () => setState(() => _showStep2 = true),
       ),
     );
   }
@@ -421,6 +498,22 @@ class _TutorialDetailScreenState extends State<TutorialDetailScreen> {
         ),
       ],
     );
+  }
+
+  String _buildStep2Summary() {
+    if (_techniqueResult == null) return '';
+    final parts = <String>[];
+    if (_techniqueResult!.placements.isNotEmpty) {
+      for (final e in _techniqueResult!.placements.entries) {
+        parts.add('R${e.key.row + 1}C${e.key.col + 1} 填入 ${e.value}');
+      }
+    }
+    if (_techniqueResult!.eliminateCandidates.isNotEmpty) {
+      final count = _techniqueResult!.eliminateCandidates.values
+          .fold<int>(0, (sum, s) => sum + s.length);
+      parts.add('删除 $count 个候选数');
+    }
+    return parts.isEmpty ? '' : '→ ${parts.join('，')}';
   }
 
   Color _categoryColor(TechniqueCategory category) {
