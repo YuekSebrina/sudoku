@@ -109,6 +109,8 @@ class _ToolButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppTheme.isDark(context);
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -124,16 +126,30 @@ class _ToolButton extends StatelessWidget {
                 height: 44,
                 decoration: BoxDecoration(
                   color: isActive
-                      ? AppTheme.primaryColor.withValues(alpha: 0.12)
-                      : Colors.grey.shade50,
+                      ? AppTheme.primaryColor.withValues(alpha: isDark ? 0.28 : 0.12)
+                      : (isDark ? const Color(0xFF2A3240) : Colors.grey.shade50),
                   shape: BoxShape.circle,
+                  boxShadow: isDark
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.18),
+                            blurRadius: isActive ? 10 : 6,
+                            offset: const Offset(0, 3),
+                          ),
+                        ]
+                      : null,
                   border: isActive
                       ? Border.all(color: AppTheme.primaryColor, width: 1.5)
-                      : Border.all(color: Colors.grey.shade200, width: 1),
+                      : Border.all(
+                          color: isDark ? const Color(0xFF4A5568) : Colors.grey.shade200,
+                          width: 1,
+                        ),
                 ),
                 child: Icon(
                   icon,
-                  color: isActive ? AppTheme.primaryColor : Colors.grey.shade600,
+                  color: isActive
+                      ? AppTheme.primaryColor
+                      : (isDark ? const Color(0xFFCBD5E1) : Colors.grey.shade600),
                   size: 20,
                 ),
               ),
@@ -143,7 +159,9 @@ class _ToolButton extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                  color: isActive ? AppTheme.primaryColor : Colors.grey.shade500,
+                  color: isActive
+                      ? AppTheme.primaryColor
+                      : (isDark ? const Color(0xFFCBD5E1) : Colors.grey.shade500),
                 ),
               ),
             ],
@@ -173,28 +191,30 @@ class _NumberButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = AppTheme.isDark(context);
+
     Color bgColor;
     Color numColor;
     Color borderColor;
     double borderWidth = 1;
 
     if (_isCompleted) {
-      bgColor = Colors.grey.shade100;
-      numColor = Colors.grey.shade300;
-      borderColor = Colors.grey.shade200;
+      bgColor = isDark ? const Color(0xFF242B36) : Colors.grey.shade100;
+      numColor = isDark ? const Color(0xFF5B6778) : Colors.grey.shade300;
+      borderColor = isDark ? const Color(0xFF374151) : Colors.grey.shade200;
     } else if (isNoteActive) {
-      bgColor = AppTheme.primaryColor.withValues(alpha: 0.12);
+      bgColor = AppTheme.primaryColor.withValues(alpha: isDark ? 0.24 : 0.12);
       numColor = AppTheme.primaryColor;
       borderColor = AppTheme.primaryColor;
       borderWidth = 1.5;
     } else if (isNoteDimmed) {
-      bgColor = Colors.grey.shade50;
-      numColor = Colors.grey.shade300;
-      borderColor = Colors.grey.shade200;
+      bgColor = isDark ? const Color(0xFF242B36) : Colors.grey.shade50;
+      numColor = isDark ? const Color(0xFF5B6778) : Colors.grey.shade300;
+      borderColor = isDark ? const Color(0xFF374151) : Colors.grey.shade200;
     } else {
-      bgColor = Colors.white;
-      numColor = AppTheme.primaryColor;
-      borderColor = Colors.grey.shade300;
+      bgColor = isDark ? const Color(0xFF2A3240) : Colors.white;
+      numColor = isDark ? const Color(0xFF9EC1FF) : AppTheme.primaryColor;
+      borderColor = isDark ? const Color(0xFF4A5568) : Colors.grey.shade300;
     }
 
     return Expanded(
@@ -204,13 +224,33 @@ class _NumberButton extends StatelessWidget {
           color: Colors.transparent,
           child: InkWell(
             onTap: _isCompleted ? null : onTap,
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
+            borderRadius: BorderRadius.circular(12),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOutCubic,
               height: 56,
               decoration: BoxDecoration(
                 color: bgColor,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: borderColor, width: borderWidth),
+                boxShadow: isDark
+                    ? [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.16),
+                          blurRadius: isNoteActive ? 14 : 8,
+                          offset: const Offset(0, 4),
+                        ),
+                        if (!_isCompleted)
+                          BoxShadow(
+                            color: (isNoteActive
+                                    ? AppTheme.primaryColor
+                                    : Colors.white)
+                                .withValues(alpha: isNoteActive ? 0.12 : 0.04),
+                            blurRadius: isNoteActive ? 10 : 4,
+                            spreadRadius: isNoteActive ? 0.5 : 0,
+                          ),
+                      ]
+                    : null,
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -219,8 +259,9 @@ class _NumberButton extends StatelessWidget {
                     '$number',
                     style: TextStyle(
                       fontSize: 22,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                       color: numColor,
+                      letterSpacing: 0.2,
                       height: 1.1,
                     ),
                   ),
@@ -230,8 +271,8 @@ class _NumberButton extends StatelessWidget {
                       fontSize: 10,
                       fontWeight: FontWeight.w500,
                       color: _isCompleted || isNoteDimmed
-                          ? Colors.grey.shade300
-                          : Colors.grey.shade400,
+                          ? (isDark ? const Color(0xFF5B6778) : Colors.grey.shade300)
+                          : (isDark ? const Color(0xFF94A3B8) : Colors.grey.shade400),
                       height: 1.2,
                     ),
                   ),

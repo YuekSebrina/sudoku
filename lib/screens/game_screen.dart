@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -24,8 +24,16 @@ import '../widgets/sudoku_board_widget.dart';
 class GameScreen extends StatefulWidget {
   final Difficulty difficulty;
   final Map<String, dynamic>? savedGame;
+  final ThemeMode themeMode;
+  final ValueChanged<ThemeMode> onThemeModeChanged;
 
-  const GameScreen({super.key, required this.difficulty, this.savedGame});
+  const GameScreen({
+    super.key,
+    required this.difficulty,
+    this.savedGame,
+    required this.themeMode,
+    required this.onThemeModeChanged,
+  });
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -38,6 +46,7 @@ class _GameScreenState extends State<GameScreen> {
   bool _isLoading = true;
   bool _isPaused = false;
   bool _isTimerStopped = false;
+  int _persistentHighlightNumber = 0;
   late List<List<int>> _initialPuzzle;
   late List<List<int>> _currentSolution;
 
@@ -92,6 +101,7 @@ class _GameScreenState extends State<GameScreen> {
 
     _initialPuzzle = puzzleValues;
     _currentSolution = solution;
+    _persistentHighlightNumber = 0;
 
     setState(() {
       _gameState = GameState(
@@ -130,6 +140,7 @@ class _GameScreenState extends State<GameScreen> {
 
     _initialPuzzle = puzzleValues;
     _currentSolution = solution;
+    _persistentHighlightNumber = 0;
 
     final board = SudokuBoard.fromValues(puzzleValues);
     for (int r = 0; r < 9; r++) {
@@ -165,6 +176,7 @@ class _GameScreenState extends State<GameScreen> {
 
   void _restartSamePuzzle() {
     final board = SudokuBoard.fromValues(_initialPuzzle);
+    _persistentHighlightNumber = 0;
     setState(() {
       _gameState = GameState(
         board: board,
@@ -233,7 +245,22 @@ class _GameScreenState extends State<GameScreen> {
   void _onCellTap((int, int) position) {
     if (_gameState.status != GameStatus.playing || _isPaused) return;
     final (row, col) = position;
-    setState(() => _gameState.selectCell(row, col));
+    final isSameSelection =
+        _gameState.selectedRow == row && _gameState.selectedCol == col;
+
+    setState(() {
+      if (isSameSelection) {
+        _gameState.clearSelection();
+        _persistentHighlightNumber = 0;
+        return;
+      }
+
+      _gameState.selectCell(row, col);
+      final tappedCell = _gameState.board.getCell(row, col);
+      if (tappedCell.isFixed && tappedCell.value != 0) {
+        _persistentHighlightNumber = tappedCell.value;
+      }
+    });
   }
 
   void _onNumberInput(int number) {
@@ -524,6 +551,38 @@ class _GameScreenState extends State<GameScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 SwitchListTile(title: const Text('自动删除候选数'), subtitle: const Text('填入数字时自动删除相关候选数'), value: _settings.autoRemoveNotes, onChanged: (v) { setDialogState(() => _settings.autoRemoveNotes = v); setState(() {}); }),
+                const Divider(height: 20),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('显示模式'),
+                  subtitle: const Text('亮色、暗色或跟随系统'),
+                ),
+                SegmentedButton<ThemeMode>(
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment<ThemeMode>(
+                      value: ThemeMode.light,
+                      label: Text('亮色'),
+                      icon: Icon(Icons.light_mode_outlined),
+                    ),
+                    ButtonSegment<ThemeMode>(
+                      value: ThemeMode.dark,
+                      label: Text('暗色'),
+                      icon: Icon(Icons.dark_mode_outlined),
+                    ),
+                    ButtonSegment<ThemeMode>(
+                      value: ThemeMode.system,
+                      label: Text('系统'),
+                      icon: Icon(Icons.brightness_auto_outlined),
+                    ),
+                  ],
+                  selected: {widget.themeMode},
+                  onSelectionChanged: (selection) {
+                    widget.onThemeModeChanged(selection.first);
+                    setDialogState(() {});
+                  },
+                ),
+                const Divider(height: 20),
                 SwitchListTile(title: const Text('高亮相同数字'), value: _settings.highlightSameNumbers, onChanged: (v) { setDialogState(() => _settings.highlightSameNumbers = v); setState(() {}); }),
                 SwitchListTile(title: const Text('高亮关联区域'), subtitle: const Text('高亮选中格的同行、同列、同宫'), value: _settings.highlightRelatedCells, onChanged: (v) { setDialogState(() => _settings.highlightRelatedCells = v); setState(() {}); }),
                 SwitchListTile(title: const Text('高亮候选数'), subtitle: const Text('选中数字时高亮匹配的候选数'), value: _settings.highlightCandidates, onChanged: (v) { setDialogState(() => _settings.highlightCandidates = v); setState(() {}); }),
@@ -754,26 +813,85 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget _buildBoardArea() {
-    return Stack(children: [
-      SudokuBoardWidget(gameState: _gameState, onCellTap: _onCellTap, highlightSameNumbers: _settings.highlightSameNumbers, highlightRelatedCells: _settings.highlightRelatedCells, highlightCandidates: _settings.highlightCandidates),
-      Positioned.fill(child: DrawingOverlay(isActive: _drawingMode, currentTool: _drawingTool, currentColor: _drawingColor, elements: _drawingElements, onElementsChanged: (e) => setState(() => _drawingElements = e))),
-      if (_isPaused) _buildPauseOverlay(),
-    ]);
+    final isDark = AppTheme.isDark(context);
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppTheme.boardBackgroundOf(context),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.black.withValues(alpha: 0.05),
+        ),
+        boxShadow: isDark
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.32),
+                  blurRadius: 26,
+                  offset: const Offset(0, 14),
+                ),
+                BoxShadow(
+                  color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                  blurRadius: 24,
+                  spreadRadius: 1,
+                ),
+              ]
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+      ),
+      child: Stack(children: [
+        SudokuBoardWidget(gameState: _gameState, onCellTap: _onCellTap, highlightSameNumbers: _settings.highlightSameNumbers, highlightRelatedCells: _settings.highlightRelatedCells, highlightCandidates: _settings.highlightCandidates, persistentHighlightNumber: _persistentHighlightNumber),
+        Positioned.fill(child: DrawingOverlay(isActive: _drawingMode, currentTool: _drawingTool, currentColor: _drawingColor, elements: _drawingElements, onElementsChanged: (e) => setState(() => _drawingElements = e))),
+        if (_isPaused) _buildPauseOverlay(),
+      ]),
+    );
   }
 
   Widget _buildPauseOverlay() {
+    final isDark = AppTheme.isDark(context);
     return Positioned.fill(
       child: GestureDetector(
         onTap: _togglePause,
         child: Container(
-          decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4)),
-          child: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.pause_circle_outline, size: 64, color: Colors.grey.shade500),
-            const SizedBox(height: 16),
-            Text('游戏已暂停', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: Colors.grey.shade600)),
-            const SizedBox(height: 8),
-            Text('点击继续', style: TextStyle(fontSize: 14, color: Colors.grey.shade500)),
-          ])),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xCC1E2530) : Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.pause_circle_outline,
+                  size: 64,
+                  color: isDark ? const Color(0xFF94A3B8) : Colors.grey.shade500,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '游戏已暂停',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? const Color(0xFFE2E8F0) : Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '点击继续',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? const Color(0xFF94A3B8) : Colors.grey.shade500,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -801,7 +919,8 @@ class _StatusItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final c = color ?? Colors.grey.shade700;
+    final isDark = AppTheme.isDark(context);
+    final c = color ?? (isDark ? const Color(0xFFCBD5E1) : Colors.grey.shade700);
     return Row(children: [
       Icon(icon, size: 18, color: c),
       const SizedBox(width: 4),

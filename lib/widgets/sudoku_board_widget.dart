@@ -10,6 +10,7 @@ class SudokuBoardWidget extends StatelessWidget {
   final bool highlightSameNumbers;
   final bool highlightRelatedCells;
   final bool highlightCandidates;
+  final int persistentHighlightNumber;
 
   const SudokuBoardWidget({
     super.key,
@@ -18,6 +19,7 @@ class SudokuBoardWidget extends StatelessWidget {
     this.highlightSameNumbers = true,
     this.highlightRelatedCells = true,
     this.highlightCandidates = true,
+    this.persistentHighlightNumber = 0,
   });
 
   bool _isHighlighted(int row, int col) {
@@ -30,24 +32,27 @@ class SudokuBoardWidget extends StatelessWidget {
     return false;
   }
 
-  bool _isSameNumber(int row, int col) {
-    if (!highlightSameNumbers) return false;
-    if (!gameState.hasSelection) return false;
+  int get _effectiveHighlightNumber {
+    if (!gameState.hasSelection) return persistentHighlightNumber;
     final selectedCell = gameState.board.getCell(
       gameState.selectedRow,
       gameState.selectedCol,
     );
-    if (selectedCell.isEmpty) return false;
+    if (selectedCell.value != 0) return selectedCell.value;
+    return persistentHighlightNumber;
+  }
+
+  bool _isSameNumber(int row, int col) {
+    if (!highlightSameNumbers) return false;
+    final number = _effectiveHighlightNumber;
+    if (number == 0) return false;
     final current = gameState.board.getCell(row, col);
-    return current.value == selectedCell.value && current.value != 0;
+    return current.value == number && current.value != 0;
   }
 
   int get _selectedNumber {
     if (!highlightCandidates) return 0;
-    if (!gameState.hasSelection) return 0;
-    return gameState.board
-        .getCell(gameState.selectedRow, gameState.selectedCol)
-        .value;
+    return _effectiveHighlightNumber;
   }
 
   @override
@@ -58,7 +63,7 @@ class SudokuBoardWidget extends StatelessWidget {
         aspectRatio: 1,
         child: Container(
           decoration: BoxDecoration(
-            border: Border.all(color: AppTheme.boxLineColor, width: 2),
+            border: Border.all(color: AppTheme.boxLineColorOf(context), width: 2),
             borderRadius: BorderRadius.circular(4),
           ),
           child: GridView.builder(

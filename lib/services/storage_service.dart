@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/game_stats.dart';
@@ -59,6 +60,7 @@ class StorageService {
   // --- Practice Progress ---
 
   static const _keyPracticeProgress = 'practice_progress';
+  static const _keyThemeMode = 'theme_mode';
 
   static Future<Map<String, int>> loadPracticeProgress() async {
     final prefs = await _prefs;
@@ -68,10 +70,36 @@ class StorageService {
     return data.map((k, v) => MapEntry(k, v as int));
   }
 
-  static Future<void> savePracticeProgress(String techniqueId, int completed) async {
+  static Future<void> savePracticeProgress(
+    String techniqueId,
+    int completed,
+  ) async {
     final progress = await loadPracticeProgress();
     progress[techniqueId] = completed;
     final prefs = await _prefs;
     await prefs.setString(_keyPracticeProgress, jsonEncode(progress));
+  }
+
+  static Future<ThemeMode> loadThemeMode() async {
+    final prefs = await _prefs;
+    final value = prefs.getString(_keyThemeMode);
+    switch (value) {
+      case 'light':
+        return ThemeMode.light;
+      case 'dark':
+        return ThemeMode.dark;
+      default:
+        return ThemeMode.system;
+    }
+  }
+
+  static Future<void> saveThemeMode(ThemeMode mode) async {
+    final prefs = await _prefs;
+    final value = switch (mode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      ThemeMode.system => 'system',
+    };
+    await prefs.setString(_keyThemeMode, value);
   }
 }
