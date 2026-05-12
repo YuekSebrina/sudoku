@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'dart:math';
 import 'package:sudoku/services/sudoku_solver.dart';
 
 void main() {

@@ -28,7 +28,7 @@ void main() {
       expect(clueCount, lessThanOrEqualTo(45));
 
       // Puzzle should have a unique solution
-      final testGrid = List.generate(9, (r) => List<int>.from(values));
+      final testGrid = values;
       final count = DlxSolver.countSolutions(testGrid);
       expect(count, 1);
 
@@ -58,7 +58,7 @@ void main() {
       expect(clueCount, greaterThanOrEqualTo(22));
 
       // Unique solution
-      final testGrid = List.generate(9, (r) => List<int>.from(values));
+      final testGrid = values;
       expect(DlxSolver.countSolutions(testGrid), 1);
     });
 
@@ -74,7 +74,7 @@ void main() {
       }
       expect(clueCount, lessThanOrEqualTo(30));
 
-      final testGrid = List.generate(9, (r) => List<int>.from(values));
+      final testGrid = values;
       expect(DlxSolver.countSolutions(testGrid), 1);
     });
 
@@ -105,8 +105,8 @@ void main() {
 
       // It's possible (though unlikely) that two random puzzles are identical
       // so we just verify both are valid
-      final testGrid1 = List.generate(9, (r) => List<int>.from(v1));
-      final testGrid2 = List.generate(9, (r) => List<int>.from(v2));
+      final testGrid1 = v1;
+      final testGrid2 = v2;
       expect(DlxSolver.countSolutions(testGrid1), 1);
       expect(DlxSolver.countSolutions(testGrid2), 1);
     });
