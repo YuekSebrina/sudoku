@@ -117,7 +117,7 @@ class SudokuBoard {
     final boxCol = (col ~/ 3) * 3;
     for (int r = boxRow; r < boxRow + 3; r++) {
       for (int c = boxCol; c < boxCol + 3; c++) {
-        if (r != row && c != col && cells[r][c].value == value) return false;
+        if ((r != row || c != col) && cells[r][c].value == value) return false;
       }
     }
     return true;
