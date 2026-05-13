@@ -39,7 +39,15 @@ class _SudokuAppState extends State<SudokuApp> {
   Future<void> _checkForUpdateOnLaunch() async {
     final info = await UpdateService.instance.checkForUpdate();
     if (!mounted || info == null) return;
-    await showUpdateDialog(context, info);
+
+    // 延迟到首帧后的下一轮事件循环，确保 root context 已挂到 Navigator 下；
+    // Windows release 启动时若直接用 MaterialApp 上层 context showDialog，
+    // Navigator.of(context) 会取到 null 并导致进程异常退出。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        showUpdateDialog(context, info);
+      }
+    });
   }
 
   Future<void> _loadThemeMode() async {
