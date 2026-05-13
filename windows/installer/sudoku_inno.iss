@@ -1,5 +1,5 @@
 #define MyAppName "Sudoku"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.0.0"
 #define MyAppPublisher "Sudoku"
 #define MyAppExeName "sudoku.exe"
 #define SourceDir "..\..\build\windows\x64\runner\Release"
