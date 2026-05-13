@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../models/difficulty.dart';
 import '../models/game_stats.dart';
+import '../models/update_info.dart';
 import '../services/storage_service.dart';
+import '../services/update_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/update_dialog.dart';
 import 'game_screen.dart';
 import 'stats_screen.dart';
 import 'tutorial_screen.dart';
@@ -26,6 +29,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _tabIndex = 0;
   Map<String, dynamic>? _savedGame;
   GameStats? _stats;
+  UpdateInfo? _updateInfo;
+  bool _isManualUpdateChecking = false;
 
   @override
   void initState() {
@@ -44,14 +49,42 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _checkForUpdateManually() async {
+    if (_isManualUpdateChecking) return;
+    setState(() => _isManualUpdateChecking = true);
+    final info = await UpdateService.instance.checkForUpdate(manual: true);
+    if (!mounted) return;
+    setState(() {
+      _isManualUpdateChecking = false;
+      _updateInfo = info;
+    });
+
+    if (info != null) {
+      await showUpdateDialog(context, info);
+    } else if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('当前已是最新版本')));
+    }
+  }
+
+  Future<void> _showUpdateDialog() async {
+    final info = _updateInfo;
+    if (info == null) return;
+    await showUpdateDialog(context, info);
+  }
+
   void _startGame(BuildContext context, Difficulty difficulty) {
     Navigator.of(context)
-        .push(MaterialPageRoute(
+        .push(
+          MaterialPageRoute(
             builder: (_) => GameScreen(
-                  difficulty: difficulty,
-                  themeMode: widget.themeMode,
-                  onThemeModeChanged: widget.onThemeModeChanged,
-                )))
+              difficulty: difficulty,
+              themeMode: widget.themeMode,
+              onThemeModeChanged: widget.onThemeModeChanged,
+            ),
+          ),
+        )
         .then((_) => _refresh());
   }
 
@@ -63,13 +96,16 @@ class _HomeScreenState extends State<HomeScreen> {
       orElse: () => Difficulty.easy,
     );
     Navigator.of(context)
-        .push(MaterialPageRoute(
+        .push(
+          MaterialPageRoute(
             builder: (_) => GameScreen(
-                  difficulty: difficulty,
-                  savedGame: _savedGame,
-                  themeMode: widget.themeMode,
-                  onThemeModeChanged: widget.onThemeModeChanged,
-                )))
+              difficulty: difficulty,
+              savedGame: _savedGame,
+              themeMode: widget.themeMode,
+              onThemeModeChanged: widget.onThemeModeChanged,
+            ),
+          ),
+        )
         .then((_) => _refresh());
   }
 
@@ -91,10 +127,9 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Text(
                   '选择难度',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
                 ),
                 const SizedBox(height: 12),
                 Flexible(
@@ -139,11 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             alignment: Alignment.center,
-            child: Icon(
-              icon,
-              color: AppTheme.primaryColor,
-              size: 22,
-            ),
+            child: Icon(icon, color: AppTheme.primaryColor, size: 22),
           ),
           title: Text(
             difficulty.name,
@@ -202,17 +233,20 @@ class _HomeScreenState extends State<HomeScreen> {
         onDestinationSelected: (i) => setState(() => _tabIndex = i),
         destinations: const [
           NavigationDestination(
-              icon: Icon(Icons.play_circle_outline),
-              selectedIcon: Icon(Icons.play_circle),
-              label: '游戏'),
+            icon: Icon(Icons.play_circle_outline),
+            selectedIcon: Icon(Icons.play_circle),
+            label: '游戏',
+          ),
           NavigationDestination(
-              icon: Icon(Icons.school_outlined),
-              selectedIcon: Icon(Icons.school),
-              label: '教学'),
+            icon: Icon(Icons.school_outlined),
+            selectedIcon: Icon(Icons.school),
+            label: '教学',
+          ),
           NavigationDestination(
-              icon: Icon(Icons.bar_chart_outlined),
-              selectedIcon: Icon(Icons.bar_chart),
-              label: '统计'),
+            icon: Icon(Icons.bar_chart_outlined),
+            selectedIcon: Icon(Icons.bar_chart),
+            label: '统计',
+          ),
         ],
       ),
     );
@@ -237,13 +271,18 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 8),
               const Icon(Icons.grid_on, size: 64, color: AppTheme.primaryColor),
               const SizedBox(height: 12),
-              Text('数独',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.primaryColor)),
+              Text(
+                '数独',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.primaryColor,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text('经典数字逻辑游戏',
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade500)),
+              Text(
+                '经典数字逻辑游戏',
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+              ),
               const SizedBox(height: 56),
               _buildActionBasket(
                 context,
@@ -264,6 +303,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: () => _showDifficultyPicker(context),
                 accentColor: AppTheme.accentColor,
               ),
+              if (_updateInfo != null) ...[
+                const SizedBox(height: 16),
+                UpdateBanner(info: _updateInfo!, onTap: _showUpdateDialog),
+              ],
             ],
           ),
         ),
@@ -303,6 +346,15 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         actions: [
           TextButton(
+            onPressed: _isManualUpdateChecking
+                ? null
+                : () {
+                    Navigator.of(ctx).pop();
+                    _checkForUpdateManually();
+                  },
+            child: Text(_isManualUpdateChecking ? '检查中...' : '检查更新'),
+          ),
+          TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('关闭'),
           ),
@@ -334,10 +386,7 @@ class _HomeScreenState extends State<HomeScreen> {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: disabled
-                  ? [
-                      Colors.grey.shade300,
-                      Colors.grey.shade200,
-                    ]
+                  ? [Colors.grey.shade300, Colors.grey.shade200]
                   : [
                       accentColor.withValues(alpha: 0.18),
                       accentColor.withValues(alpha: 0.06),
@@ -380,7 +429,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: TextStyle(
                         fontSize: 13,
                         height: 1.35,
-                        color: disabled ? Colors.grey.shade600 : Colors.grey.shade700,
+                        color: disabled
+                            ? Colors.grey.shade600
+                            : Colors.grey.shade700,
                       ),
                     ),
                   ],

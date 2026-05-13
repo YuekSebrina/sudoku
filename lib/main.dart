@@ -1,13 +1,19 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'screens/home_screen.dart';
 import 'services/puzzle_cache.dart';
 import 'services/storage_service.dart';
+import 'services/update_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/update_dialog.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   PuzzleCache.warmUp();
+  if (!kIsWeb) {
+    UpdateService.instance;
+  }
   runApp(const SudokuApp());
 }
 
@@ -25,6 +31,15 @@ class _SudokuAppState extends State<SudokuApp> {
   void initState() {
     super.initState();
     _loadThemeMode();
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) _checkForUpdateOnLaunch();
+    });
+  }
+
+  Future<void> _checkForUpdateOnLaunch() async {
+    final info = await UpdateService.instance.checkForUpdate();
+    if (!mounted || info == null) return;
+    await showUpdateDialog(context, info);
   }
 
   Future<void> _loadThemeMode() async {
