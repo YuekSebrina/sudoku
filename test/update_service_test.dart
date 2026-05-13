@@ -164,6 +164,57 @@ void main() {
       expect(progress.last, 1.0);
     });
 
+    test(
+      'downloadUpdate preserves zip extension from Windows download URL',
+      () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'sudoku_update_windows_zip_test_',
+        );
+        addTearDown(() => tempDir.delete(recursive: true));
+        final service = UpdateService(
+          platformProvider: () => 'windows',
+          tempDirectoryProvider: () => tempDir,
+          httpByteDownloader: (uri, targetFile, onProgress) async {
+            await targetFile.writeAsString('zip-bytes');
+            return targetFile.path;
+          },
+        );
+
+        final path = await service.downloadUpdate(
+          const UpdateInfo(
+            hasUpdate: true,
+            latestVersion: '1.1.0',
+            downloadUrl: 'http://127.0.0.1/releases/sudoku-windows-1.1.0.zip',
+          ),
+        );
+
+        expect(path, isNotNull);
+        expect(path, endsWith('.zip'));
+        expect(File(path!).readAsStringSync(), 'zip-bytes');
+      },
+    );
+
+    test('installUpdate opens Windows zip package with explorer', () async {
+      final commands = <List<String>>[];
+      final service = UpdateService(
+        platformProvider: () => 'windows',
+        processRunner: (executable, arguments) async {
+          commands.add([executable, ...arguments]);
+          return ProcessResult(1, 0, '', '');
+        },
+      );
+
+      final ok = await service.installUpdate(
+        'C:\\Temp\\sudoku-update-1.1.0.zip',
+      );
+
+      expect(ok, isTrue);
+      expect(commands.single, [
+        'explorer',
+        'C:\\Temp\\sudoku-update-1.1.0.zip',
+      ]);
+    });
+
     test('installUpdate runs injected installer command', () async {
       final commands = <List<String>>[];
       final service = UpdateService(

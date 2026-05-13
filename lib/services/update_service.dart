@@ -131,21 +131,21 @@ class UpdateService {
     _downloadProgress = 0.0;
 
     final platform = _platformProvider();
-    final extension = platform == 'windows' ? 'exe' : 'dmg';
+    final downloadUri = Uri.parse(info.downloadUrl);
+    final extension = _extensionFromDownloadUri(
+      downloadUri,
+      platform: platform,
+    );
     final file = File(
       '${_tempDirectoryProvider().path}${Platform.pathSeparator}'
-      'sudoku-update-${info.latestVersion}.$extension',
+      'sudoku-update-${info.latestVersion}$extension',
     );
 
     try {
-      final path = await _httpByteDownloader(
-        Uri.parse(info.downloadUrl),
-        file,
-        (value) {
-          _downloadProgress = value.clamp(0.0, 1.0);
-          onProgress?.call(_downloadProgress);
-        },
-      );
+      final path = await _httpByteDownloader(downloadUri, file, (value) {
+        _downloadProgress = value.clamp(0.0, 1.0);
+        onProgress?.call(_downloadProgress);
+      });
       if (path == null) return null;
       _downloadProgress = 1.0;
       onProgress?.call(_downloadProgress);
@@ -168,7 +168,13 @@ class UpdateService {
       if (platform == 'macos') {
         result = await _processRunner('open', [localPath]);
       } else if (platform == 'windows') {
-        result = await _processRunner('cmd', ['/c', 'start', '', localPath]);
+        final extension = _extensionFromPath(localPath).toLowerCase();
+        if (extension == '.zip') {
+          // ZIP 更新包不是可执行安装器，打开资源管理器让用户查看/解压。
+          result = await _processRunner('explorer', [localPath]);
+        } else {
+          result = await _processRunner('cmd', ['/c', 'start', '', localPath]);
+        }
       } else {
         return false;
       }
@@ -196,6 +202,24 @@ class UpdateService {
 
   static bool _isSupportedPlatform(String platform) {
     return platform == 'macos' || platform == 'windows';
+  }
+
+  static String _extensionFromDownloadUri(Uri uri, {required String platform}) {
+    final extension = _extensionFromPath(uri.path).toLowerCase();
+    if (extension.isNotEmpty) return extension;
+
+    // 兼容极少数无扩展下载地址；正常路径必须优先保留服务端文件扩展名。
+    if (platform == 'macos') return '.dmg';
+    if (platform == 'windows') return '.exe';
+    return '.bin';
+  }
+
+  static String _extensionFromPath(String path) {
+    final normalizedPath = path.replaceAll('\\', '/');
+    final fileName = normalizedPath.split('/').last;
+    final dotIndex = fileName.lastIndexOf('.');
+    if (dotIndex <= 0 || dotIndex == fileName.length - 1) return '';
+    return fileName.substring(dotIndex);
   }
 
   Future<bool> _wasRecentlyPrompted(UpdateInfo info) async {
